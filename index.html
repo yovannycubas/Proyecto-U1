@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TaskFlow – Gestión de Tareas</title>
+  <meta name="description" content="Aplicación web para gestionar tus tareas diarias. Agrega, edita, elimina y filtra tareas fácilmente." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">✦</span>
+        <h1 class="logo-title">TaskFlow</h1>
+      </div>
+      <button id="btn-add-task" class="btn btn-primary" aria-label="Agregar nueva tarea">
+        <span class="btn-icon">+</span>
+        Nueva Tarea
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- STATS BAR -->
+    <section class="stats-bar" aria-label="Resumen de tareas">
+      <div class="stat-card">
+        <span class="stat-number" id="stat-total">0</span>
+        <span class="stat-label">Total</span>
+      </div>
+      <div class="stat-card accent-pending">
+        <span class="stat-number" id="stat-pending">0</span>
+        <span class="stat-label">Pendientes</span>
+      </div>
+      <div class="stat-card accent-done">
+        <span class="stat-number" id="stat-done">0</span>
+        <span class="stat-label">Completadas</span>
+      </div>
+    </section>
+
+    <!-- SEARCH & FILTERS -->
+    <section class="controls" aria-label="Búsqueda y filtros">
+      <div class="search-wrapper">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          id="search-input"
+          class="search-input"
+          placeholder="Buscar por título o descripción..."
+          aria-label="Buscar tareas"
+        />
+        <button id="btn-clear-search" class="btn-clear" aria-label="Limpiar búsqueda" style="display:none">✕</button>
+      </div>
+      <div class="filter-group" role="group" aria-label="Filtrar por estado">
+        <button class="filter-btn active" data-filter="all" id="filter-all">Todas</button>
+        <button class="filter-btn" data-filter="pending" id="filter-pending">Pendientes</button>
+        <button class="filter-btn" data-filter="completed" id="filter-completed">Completadas</button>
+      </div>
+    </section>
+
+    <!-- TASK LIST -->
+    <section class="task-section" aria-label="Lista de tareas">
+      <div id="task-list" class="task-list"></div>
+      <div id="empty-state" class="empty-state" style="display:none">
+        <div class="empty-icon">📋</div>
+        <p class="empty-title">No hay tareas aquí</p>
+        <p class="empty-sub">Agrega una nueva tarea o cambia el filtro</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: ADD / EDIT TASK -->
+  <div id="task-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-title" class="modal-heading">Nueva Tarea</h2>
+        <button id="btn-close-modal" class="btn-icon-close" aria-label="Cerrar modal">✕</button>
+      </div>
+      <form id="task-form" novalidate>
+        <input type="hidden" id="task-id" value="" />
+
+        <div class="form-group">
+          <label for="task-title" class="form-label">
+            Título <span class="required">*</span>
+          </label>
+          <input
+            type="text"
+            id="task-title"
+            class="form-input"
+            placeholder="Ej: Revisar informe mensual"
+            maxlength="80"
+            required
+            aria-required="true"
+          />
+          <span class="field-error" id="error-title" role="alert"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="task-desc" class="form-label">
+            Descripción <span class="required">*</span>
+          </label>
+          <textarea
+            id="task-desc"
+            class="form-textarea"
+            placeholder="Describe los detalles de la tarea..."
+            rows="4"
+            maxlength="300"
+            required
+            aria-required="true"
+          ></textarea>
+          <span class="field-error" id="error-desc" role="alert"></span>
+          <span class="char-count" id="char-count">0 / 300</span>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn btn-ghost">Cancelar</button>
+          <button type="submit" id="btn-save-task" class="btn btn-primary">Guardar Tarea</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CONFIRM DELETE DIALOG -->
+  <div id="confirm-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-title" style="display:none">
+    <div class="modal-card modal-sm">
+      <div class="modal-header">
+        <h2 id="confirm-title" class="modal-heading">Eliminar Tarea</h2>
+      </div>
+      <p class="confirm-text">¿Estás seguro de que deseas eliminar esta tarea? Esta acción no se puede deshacer.</p>
+      <div class="modal-actions">
+        <button id="btn-cancel-delete" class="btn btn-ghost">Cancelar</button>
+        <button id="btn-confirm-delete" class="btn btn-danger">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
