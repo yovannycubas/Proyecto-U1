@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase, isConfigured } from './lib/supabase';
 import AuthScreen from './components/AuthScreen';
 import Header from './components/Header';
@@ -24,26 +24,33 @@ function App() {
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
 
   const [toast, setToast] = useState({ message: '', type: 'success' });
+  const channelRef = useRef(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
   };
 
   const loadTasks = useCallback(async (userId) => {
-    if (!supabase) return;
+    if (!supabase || !userId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-    setLoading(false);
-    if (error) {
-      showToast('⚠️ Error al cargar tareas', 'error');
-      return;
+      if (error) {
+        showToast('⚠️ Error al cargar tareas', 'error');
+        console.error(error);
+      } else {
+        setTasks(data || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setTasks(data || []);
   }, []);
 
   useEffect(() => {
@@ -52,29 +59,43 @@ function App() {
       return;
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadTasks(session.user.id);
+    // Auth listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
 
-        // Setup Realtime
-        const channel = supabase
-          .channel(`tasks-${session.user.id}`)
+      if (currentUser) {
+        loadTasks(currentUser.id);
+
+        // Setup Realtime with cleanup check
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+        }
+
+        channelRef.current = supabase
+          .channel(`tasks-${currentUser.id}`)
           .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${session.user.id}` },
-            () => loadTasks(session.user.id)
+            { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${currentUser.id}` },
+            () => loadTasks(currentUser.id)
           )
           .subscribe();
-
-        return () => supabase.removeChannel(channel);
       } else {
+        if (channelRef.current) {
+          supabase.removeChannel(channelRef.current);
+          channelRef.current = null;
+        }
         setTasks([]);
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
   }, [loadTasks]);
 
   const handleSignIn = async (email, password) => {
@@ -90,11 +111,15 @@ function App() {
   };
 
   const handleOAuth = async (provider) => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: window.location.origin }
-    });
-    if (error) return error.message;
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) return error.message;
+    } catch (err) {
+      return 'Error de conexión con el proveedor OAuth';
+    }
     return null;
   };
 
@@ -112,11 +137,9 @@ function App() {
       if (error) return showToast('⚠️ Error al actualizar', 'error');
       showToast('✅ Tarea actualizada');
     } else {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('tasks')
-        .insert({ user_id: user.id, title, description })
-        .select()
-        .single();
+        .insert({ user_id: user.id, title, description });
       if (error) return showToast('⚠️ Error al crear', 'error');
       showToast('🎉 Tarea agregada');
     }
@@ -164,9 +187,8 @@ function App() {
   });
 
   if (!isConfigured) return <NotConfigured />;
-  if (loading && !user) return <LoadingSpinner />;
 
-  if (!user) {
+  if (!user && !loading) {
     return (
       <>
         <AuthScreen
@@ -174,10 +196,16 @@ function App() {
           onSignUp={handleSignUp}
           onOAuth={handleOAuth}
         />
-        {loading && <LoadingSpinner />}
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClear={() => setToast({ message: '', type: 'success' })}
+        />
       </>
     );
   }
+
+  if (loading && !user) return <LoadingSpinner />;
 
   return (
     <div className="app-container">
