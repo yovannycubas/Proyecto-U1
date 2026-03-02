@@ -192,10 +192,10 @@ function App() {
       } else {
         const { error } = await supabase
           .from('tasks')
-          .insert({ user_id: user.id, title, description, category, due_date });
+          .insert({ user_id: user.id, title: title || '', description: description || '', category: category || 'General', due_date: due_date || null });
         if (error) {
           console.error('Error inserting task:', error);
-          return showToast('⚠️ Error al crear. ¿Faltan columnas en la DB?', 'error');
+          return showToast(`❌ Error DB: ${error.message} (¿Ejecutaste el SQL?)`, 'error');
         }
         showToast('🎉 Tarea agregada');
       }
@@ -204,7 +204,7 @@ function App() {
       loadTasks(user.id);
     } catch (err) {
       console.error('Unexpected error saving task:', err);
-      showToast('❌ Error inesperado al guardar', 'error');
+      showToast('❌ Error inesperado: ' + err.message, 'error');
     }
   };
 
