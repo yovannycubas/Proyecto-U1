@@ -241,7 +241,7 @@ function App() {
 
         if (profileError) {
           console.error('Error awarding points:', profileError);
-          showToast('⚠️ Tarea completada, pero no se pudieron sumar puntos', 'error');
+          showToast(`⚠️ Puntos no sumados: ${profileError.message} (Revisa permisos SQL)`, 'error');
         } else {
           loadProfile(user.id);
           showToast(`🏆 ¡Completada! +${pointsToAdd} pts`);
