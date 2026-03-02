@@ -1,116 +1,304 @@
 /* ===================================================
-   TASKFLOW – app.js
-   Lógica completa: CRUD, filtros, búsqueda, localStorage
+   TASKFLOW – app.js (v2 with Supabase)
+   Auth + Cloud DB + Realtime + CRUD
    =================================================== */
 
 'use strict';
 
-/* ---------- CONSTANTS & STATE ---------- */
-const STORAGE_KEY = 'taskflow_tasks';
+/* ============================================================
+   ⚙️  CONFIG – Replace with your Supabase project credentials
+   ============================================================ */
+const SUPABASE_URL = 'https://tu-proyecto.supabase.co';
+const SUPABASE_ANON = 'tu-anon-key-aqui';
 
-let tasks  = loadTasks();
-let filter = 'all';      // 'all' | 'pending' | 'completed'
-let query  = '';
+/* ============================================================
+   SUPABASE CLIENT
+   ============================================================ */
+const { createClient } = window.supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+/* ============================================================
+   STATE
+   ============================================================ */
+let tasks = [];
+let filter = 'all';   // 'all' | 'pending' | 'completed'
+let query = '';
+let currentUser = null;
 let pendingDeleteId = null;
+let realtimeChannel = null;
 
-/* ---------- DOM REFERENCES ---------- */
-const taskList        = document.getElementById('task-list');
-const emptyState      = document.getElementById('empty-state');
-const statTotal       = document.getElementById('stat-total');
-const statPending     = document.getElementById('stat-pending');
-const statDone        = document.getElementById('stat-done');
+/* ============================================================
+   DOM REFERENCES – Auth
+   ============================================================ */
+const authScreen = document.getElementById('auth-screen');
+const loadingOverlay = document.getElementById('loading-overlay');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const loginEmail = document.getElementById('login-email');
+const loginPassword = document.getElementById('login-password');
+const registerEmail = document.getElementById('register-email');
+const registerPassword = document.getElementById('register-password');
+const authError = document.getElementById('auth-error');
+const authSuccess = document.getElementById('auth-success');
+const tabBtns = document.querySelectorAll('.auth-tab');
+const btnGoogle = document.getElementById('btn-google');
+const btnGithub = document.getElementById('btn-github');
 
-const searchInput     = document.getElementById('search-input');
-const btnClearSearch  = document.getElementById('btn-clear-search');
+/* ============================================================
+   DOM REFERENCES – App
+   ============================================================ */
+const appHeader = document.getElementById('app-header');
+const appMain = document.getElementById('app-main');
+const userEmailEl = document.getElementById('user-email');
+const userAvatar = document.getElementById('user-avatar');
+const btnLogout = document.getElementById('btn-logout');
+const btnAddTask = document.getElementById('btn-add-task');
 
-const btnAddTask      = document.getElementById('btn-add-task');
-const taskModal       = document.getElementById('task-modal');
-const modalTitle      = document.getElementById('modal-title');
-const taskForm        = document.getElementById('task-form');
-const taskIdInput     = document.getElementById('task-id');
-const taskTitleInput  = document.getElementById('task-title');
-const taskDescInput   = document.getElementById('task-desc');
-const errorTitle      = document.getElementById('error-title');
-const errorDesc       = document.getElementById('error-desc');
-const charCount       = document.getElementById('char-count');
-const btnCloseModal   = document.getElementById('btn-close-modal');
-const btnCancelModal  = document.getElementById('btn-cancel-modal');
+const taskList = document.getElementById('task-list');
+const emptyState = document.getElementById('empty-state');
+const statTotal = document.getElementById('stat-total');
+const statPending = document.getElementById('stat-pending');
+const statDone = document.getElementById('stat-done');
 
-const confirmModal    = document.getElementById('confirm-modal');
+const searchInput = document.getElementById('search-input');
+const btnClearSearch = document.getElementById('btn-clear-search');
+
+const taskModal = document.getElementById('task-modal');
+const modalTitle = document.getElementById('modal-title');
+const taskForm = document.getElementById('task-form');
+const taskIdInput = document.getElementById('task-id');
+const taskTitleInput = document.getElementById('task-title');
+const taskDescInput = document.getElementById('task-desc');
+const errorTitle = document.getElementById('error-title');
+const errorDesc = document.getElementById('error-desc');
+const charCount = document.getElementById('char-count');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnCancelModal = document.getElementById('btn-cancel-modal');
+
+const confirmModal = document.getElementById('confirm-modal');
 const btnCancelDelete = document.getElementById('btn-cancel-delete');
-const btnConfirmDel   = document.getElementById('btn-confirm-delete');
+const btnConfirmDel = document.getElementById('btn-confirm-delete');
 
-const filterBtns      = document.querySelectorAll('.filter-btn');
-const toast           = document.getElementById('toast');
+const filterBtns = document.querySelectorAll('.filter-btn');
+const toast = document.getElementById('toast');
 
-/* =====================================================
-   DATA LAYER
-   ===================================================== */
+/* ============================================================
+   LOADING OVERLAY
+   ============================================================ */
+function showLoading() { loadingOverlay.style.display = 'flex'; }
+function hideLoading() { loadingOverlay.style.display = 'none'; }
 
-function loadTasks() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-  } catch {
-    return [];
+/* ============================================================
+   AUTH UI HELPERS
+   ============================================================ */
+function showApp(user) {
+  currentUser = user;
+  authScreen.style.display = 'none';
+  appHeader.style.display = 'block';
+  appMain.style.display = 'block';
+  userEmailEl.textContent = user.email;
+  userAvatar.textContent = user.email[0].toUpperCase();
+}
+
+function showAuth() {
+  currentUser = null;
+  tasks = [];
+  authScreen.style.display = 'flex';
+  appHeader.style.display = 'none';
+  appMain.style.display = 'none';
+}
+
+function showAuthError(message) {
+  authError.textContent = message;
+  authError.style.display = 'block';
+  authSuccess.style.display = 'none';
+}
+
+function showAuthSuccess(message) {
+  authSuccess.textContent = message;
+  authSuccess.style.display = 'block';
+  authError.style.display = 'none';
+}
+
+function clearAuthMessages() {
+  authError.style.display = 'none';
+  authSuccess.style.display = 'none';
+}
+
+function translateAuthError(msg) {
+  if (msg.includes('Invalid login credentials')) return 'Correo o contraseña incorrectos.';
+  if (msg.includes('User already registered')) return 'Este correo ya está registrado. Inicia sesión.';
+  if (msg.includes('Password should be at least')) return 'La contraseña debe tener al menos 6 caracteres.';
+  if (msg.includes('Unable to validate email')) return 'Correo electrónico inválido.';
+  if (msg.includes('Email not confirmed')) return 'Debes confirmar tu correo antes de iniciar sesión.';
+  return msg;
+}
+
+/* ============================================================
+   AUTH OPERATIONS
+   ============================================================ */
+async function signUp(email, password) {
+  showLoading();
+  clearAuthMessages();
+  const { error } = await sb.auth.signUp({ email, password });
+  hideLoading();
+  if (error) {
+    showAuthError(translateAuthError(error.message));
+  } else {
+    showAuthSuccess('✅ Revisa tu correo electrónico para confirmar tu cuenta.');
+    registerForm.reset();
   }
 }
 
-function saveTasks() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+async function signIn(email, password) {
+  showLoading();
+  clearAuthMessages();
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  hideLoading();
+  if (error) showAuthError(translateAuthError(error.message));
 }
 
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+async function signInWithOAuth(provider) {
+  showLoading();
+  clearAuthMessages();
+  const { error } = await sb.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: window.location.href },
+  });
+  if (error) {
+    hideLoading();
+    showAuthError(translateAuthError(error.message));
+  }
+  // On success, Supabase redirects the page — no hideLoading needed
 }
 
-/* =====================================================
-   CRUD
-   ===================================================== */
-
-function addTask(title, description) {
-  const task = {
-    id:          generateId(),
-    title:       title.trim(),
-    description: description.trim(),
-    completed:   false,
-    createdAt:   new Date().toISOString(),
-  };
-  tasks.unshift(task);
-  saveTasks();
-  return task;
+async function signOut() {
+  showLoading();
+  unsubscribeRealtime();
+  await sb.auth.signOut();
+  hideLoading();
+  showAuth();
+  showToast('👋 Sesión cerrada correctamente');
 }
 
-function updateTask(id, title, description) {
+/* ============================================================
+   AUTH STATE LISTENER
+   onAuthStateChange fires on load and whenever auth changes
+   ============================================================ */
+sb.auth.onAuthStateChange(async (event, session) => {
+  hideLoading();
+  if (session?.user) {
+    showApp(session.user);
+    await loadTasksFromDB();
+    subscribeRealtime(session.user.id);
+  } else {
+    unsubscribeRealtime();
+    showAuth();
+  }
+});
+
+/* ============================================================
+   DATABASE OPERATIONS (Supabase PostgreSQL)
+   ============================================================ */
+async function loadTasksFromDB() {
+  if (!currentUser) return;
+  showLoading();
+  const { data, error } = await sb
+    .from('tasks')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false });
+  hideLoading();
+  if (error) {
+    showToast('⚠️ Error al cargar tareas', 'error');
+    return;
+  }
+  tasks = data || [];
+  renderTasks();
+}
+
+async function addTask(title, description) {
+  if (!currentUser) return;
+  const { data, error } = await sb
+    .from('tasks')
+    .insert({ user_id: currentUser.id, title, description, completed: false })
+    .select()
+    .single();
+  if (error) { showToast('⚠️ Error al agregar tarea', 'error'); return; }
+  tasks.unshift(data);
+  renderTasks();
+}
+
+async function updateTask(id, title, description) {
+  const { error } = await sb
+    .from('tasks')
+    .update({ title, description })
+    .eq('id', id)
+    .eq('user_id', currentUser.id);
+  if (error) { showToast('⚠️ Error al actualizar tarea', 'error'); return; }
   const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  task.title       = title.trim();
-  task.description = description.trim();
-  task.updatedAt   = new Date().toISOString();
-  saveTasks();
+  if (task) { task.title = title; task.description = description; }
+  renderTasks();
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
+  const { error } = await sb
+    .from('tasks')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', currentUser.id);
+  if (error) { showToast('⚠️ Error al eliminar tarea', 'error'); return; }
   tasks = tasks.filter(t => t.id !== id);
-  saveTasks();
+  renderTasks();
 }
 
-function toggleTask(id) {
+async function toggleTask(id) {
   const task = tasks.find(t => t.id === id);
-  if (!task) return;
-  task.completed = !task.completed;
-  saveTasks();
+  if (!task) return undefined;
+  const newCompleted = !task.completed;
+  const { error } = await sb
+    .from('tasks')
+    .update({ completed: newCompleted })
+    .eq('id', id)
+    .eq('user_id', currentUser.id);
+  if (error) { showToast('⚠️ Error al actualizar tarea', 'error'); return undefined; }
+  task.completed = newCompleted;
+  renderTasks();
+  return newCompleted;
 }
 
-/* =====================================================
-   FILTERING
-   ===================================================== */
+/* ============================================================
+   REALTIME SUBSCRIPTION (Supabase Realtime)
+   Listens to INSERT/UPDATE/DELETE on 'tasks' for this user
+   ============================================================ */
+function subscribeRealtime(userId) {
+  unsubscribeRealtime();
+  realtimeChannel = sb
+    .channel(`tasks-${userId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'tasks', filter: `user_id=eq.${userId}` },
+      () => { loadTasksFromDB(); }
+    )
+    .subscribe();
+}
 
+function unsubscribeRealtime() {
+  if (realtimeChannel) {
+    sb.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  }
+}
+
+/* ============================================================
+   FILTERING
+   ============================================================ */
 function getFiltered() {
   return tasks.filter(task => {
     const matchStatus =
       filter === 'all' ||
-      (filter === 'pending'   && !task.completed) ||
-      (filter === 'completed' &&  task.completed);
+      (filter === 'pending' && !task.completed) ||
+      (filter === 'completed' && task.completed);
 
     const q = query.toLowerCase();
     const matchText =
@@ -122,10 +310,9 @@ function getFiltered() {
   });
 }
 
-/* =====================================================
+/* ============================================================
    RENDER
-   ===================================================== */
-
+   ============================================================ */
 function formatDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -161,24 +348,23 @@ function renderTasks() {
   emptyState.style.display = 'none';
 
   const fragment = document.createDocumentFragment();
-
   filtered.forEach(task => {
     const card = document.createElement('div');
     card.className = `task-card${task.completed ? ' completed' : ''}`;
     card.dataset.id = task.id;
     card.setAttribute('role', 'article');
-    card.setAttribute('aria-label', `Tarea: ${task.title}`);
 
-    const badgeClass  = task.completed ? 'badge-completed' : 'badge-pending';
-    const badgeLabel  = task.completed ? 'Completada' : 'Pendiente';
-    const titleHtml   = highlightText(task.title, query);
-    const descHtml    = highlightText(task.description, query);
-    const dateLabel   = `Creada el ${formatDate(task.createdAt)}`;
-    const checkLabel  = task.completed ? 'Marcar como pendiente' : 'Marcar como completada';
+    const badgeClass = task.completed ? 'badge-completed' : 'badge-pending';
+    const badgeLabel = task.completed ? 'Completada' : 'Pendiente';
+    const titleHtml = highlightText(task.title, query);
+    const descHtml = highlightText(task.description, query);
+    const dateLabel = `Creada el ${formatDate(task.created_at)}`;
+    const checkLabel = task.completed ? 'Marcar como pendiente' : 'Marcar como completada';
 
     card.innerHTML = `
       <div class="task-checkbox" role="checkbox" aria-checked="${task.completed}"
-           aria-label="${checkLabel}" tabindex="0" data-action="toggle" data-id="${task.id}"></div>
+           aria-label="${checkLabel}" tabindex="0"
+           data-action="toggle" data-id="${task.id}"></div>
       <div class="task-content">
         <div class="task-title">${titleHtml}</div>
         <div class="task-desc">${descHtml}</div>
@@ -188,37 +374,33 @@ function renderTasks() {
         </div>
       </div>
       <div class="task-actions">
-        <button class="action-btn edit" data-action="edit" data-id="${task.id}" aria-label="Editar tarea">✏️</button>
+        <button class="action-btn edit"   data-action="edit"   data-id="${task.id}" aria-label="Editar tarea">✏️</button>
         <button class="action-btn delete" data-action="delete" data-id="${task.id}" aria-label="Eliminar tarea">🗑️</button>
       </div>
     `;
-
     fragment.appendChild(card);
   });
-
   taskList.appendChild(fragment);
 }
 
 function updateStats() {
-  const total     = tasks.length;
+  const total = tasks.length;
   const completed = tasks.filter(t => t.completed).length;
-  const pending   = total - completed;
-
-  statTotal.textContent   = total;
+  const pending = total - completed;
+  statTotal.textContent = total;
   statPending.textContent = pending;
-  statDone.textContent    = completed;
+  statDone.textContent = completed;
 }
 
-/* =====================================================
+/* ============================================================
    MODAL HELPERS
-   ===================================================== */
-
+   ============================================================ */
 function openAddModal() {
-  taskIdInput.value  = '';
+  taskIdInput.value = '';
   taskTitleInput.value = '';
-  taskDescInput.value  = '';
+  taskDescInput.value = '';
   errorTitle.textContent = '';
-  errorDesc.textContent  = '';
+  errorDesc.textContent = '';
   taskTitleInput.classList.remove('error');
   taskDescInput.classList.remove('error');
   charCount.textContent = '0 / 300';
@@ -231,11 +413,11 @@ function openAddModal() {
 function openEditModal(id) {
   const task = tasks.find(t => t.id === id);
   if (!task) return;
-  taskIdInput.value      = task.id;
-  taskTitleInput.value   = task.title;
-  taskDescInput.value    = task.description;
+  taskIdInput.value = task.id;
+  taskTitleInput.value = task.title;
+  taskDescInput.value = task.description;
   errorTitle.textContent = '';
-  errorDesc.textContent  = '';
+  errorDesc.textContent = '';
   taskTitleInput.classList.remove('error');
   taskDescInput.classList.remove('error');
   charCount.textContent = `${task.description.length} / 300`;
@@ -245,28 +427,17 @@ function openEditModal(id) {
   taskTitleInput.focus();
 }
 
-function closeTaskModal() {
-  hideModal(taskModal);
-}
+function closeTaskModal() { hideModal(taskModal); }
+function showModal(el) { el.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+function hideModal(el) { el.style.display = 'none'; document.body.style.overflow = ''; }
 
-function showModal(el) {
-  el.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-}
-
-function hideModal(el) {
-  el.style.display = 'none';
-  document.body.style.overflow = '';
-}
-
-/* =====================================================
+/* ============================================================
    FORM VALIDATION
-   ===================================================== */
-
+   ============================================================ */
 function validateForm() {
   let valid = true;
   const title = taskTitleInput.value.trim();
-  const desc  = taskDescInput.value.trim();
+  const desc = taskDescInput.value.trim();
 
   if (!title) {
     errorTitle.textContent = 'El título es obligatorio.';
@@ -285,77 +456,103 @@ function validateForm() {
     errorDesc.textContent = '';
     taskDescInput.classList.remove('error');
   }
-
   return valid;
 }
 
-/* =====================================================
+/* ============================================================
    TOAST
-   ===================================================== */
-
+   ============================================================ */
 let toastTimer = null;
-
 function showToast(message, type = 'success') {
   toast.textContent = message;
-  toast.className   = `toast ${type} show`;
+  toast.className = `toast ${type} show`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    toast.classList.remove('show');
-  }, 2800);
+  toastTimer = setTimeout(() => { toast.classList.remove('show'); }, 2800);
 }
 
-/* =====================================================
-   EVENT HANDLERS
-   ===================================================== */
+/* ============================================================
+   EVENT HANDLERS – AUTH
+   ============================================================ */
 
-/* -- Add Task Button -- */
+// Tab switcher
+tabBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    clearAuthMessages();
+    const tab = btn.dataset.tab;
+    loginForm.style.display = tab === 'login' ? 'block' : 'none';
+    registerForm.style.display = tab === 'register' ? 'block' : 'none';
+  });
+});
+
+// Login
+loginForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = loginEmail.value.trim();
+  const password = loginPassword.value;
+  if (!email || !password) return showAuthError('Por favor completa todos los campos.');
+  await signIn(email, password);
+});
+
+// Register
+registerForm.addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = registerEmail.value.trim();
+  const password = registerPassword.value;
+  if (!email || !password) return showAuthError('Por favor completa todos los campos.');
+  if (password.length < 6) return showAuthError('La contraseña debe tener al menos 6 caracteres.');
+  await signUp(email, password);
+});
+
+// OAuth
+btnGoogle.addEventListener('click', () => signInWithOAuth('google'));
+btnGithub.addEventListener('click', () => signInWithOAuth('github'));
+
+// Logout
+btnLogout.addEventListener('click', signOut);
+
+/* ============================================================
+   EVENT HANDLERS – TASKS
+   ============================================================ */
 btnAddTask.addEventListener('click', openAddModal);
-
-/* -- Close / Cancel Modal -- */
 btnCloseModal.addEventListener('click', closeTaskModal);
 btnCancelModal.addEventListener('click', closeTaskModal);
 
-/* -- Close modal on overlay click -- */
-taskModal.addEventListener('click', e => {
-  if (e.target === taskModal) closeTaskModal();
-});
+taskModal.addEventListener('click', e => { if (e.target === taskModal) closeTaskModal(); });
 confirmModal.addEventListener('click', e => {
-  if (e.target === confirmModal) hideModal(confirmModal);
+  if (e.target === confirmModal) { pendingDeleteId = null; hideModal(confirmModal); }
 });
 
-/* -- Save/Update Task -- */
-taskForm.addEventListener('submit', e => {
+// Save / Update task
+taskForm.addEventListener('submit', async e => {
   e.preventDefault();
   if (!validateForm()) return;
-
-  const id    = taskIdInput.value;
+  const id = taskIdInput.value;
   const title = taskTitleInput.value.trim();
-  const desc  = taskDescInput.value.trim();
-
+  const desc = taskDescInput.value.trim();
+  closeTaskModal();
   if (id) {
-    updateTask(id, title, desc);
+    await updateTask(id, title, desc);
     showToast('✅ Tarea actualizada correctamente');
   } else {
-    addTask(title, desc);
+    await addTask(title, desc);
     showToast('🎉 Tarea agregada exitosamente');
   }
-
-  closeTaskModal();
-  renderTasks();
 });
 
-/* -- Character counter -- */
+// Char counter
 taskDescInput.addEventListener('input', () => {
   charCount.textContent = `${taskDescInput.value.length} / 300`;
 });
 
-/* -- Search -- */
+// Search
 searchInput.addEventListener('input', () => {
   query = searchInput.value.trim();
   btnClearSearch.style.display = query ? 'block' : 'none';
   renderTasks();
 });
-
 btnClearSearch.addEventListener('click', () => {
   searchInput.value = '';
   query = '';
@@ -364,7 +561,7 @@ btnClearSearch.addEventListener('click', () => {
   searchInput.focus();
 });
 
-/* -- Filters -- */
+// Filters
 filterBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     filterBtns.forEach(b => b.classList.remove('active'));
@@ -374,95 +571,57 @@ filterBtns.forEach(btn => {
   });
 });
 
-/* -- Task List Delegation (toggle, edit, delete) -- */
-taskList.addEventListener('click', e => {
+// Task list event delegation
+taskList.addEventListener('click', async e => {
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const action = el.dataset.action;
-  const id     = el.dataset.id;
+  const id = el.dataset.id;
 
   if (action === 'toggle') {
-    toggleTask(id);
-    const task = tasks.find(t => t.id === id);
-    showToast(task?.completed ? '✅ Marcada como completada' : '🔄 Marcada como pendiente');
-    renderTasks();
+    const newCompleted = await toggleTask(id);
+    if (newCompleted !== undefined) {
+      showToast(newCompleted ? '✅ Marcada como completada' : '🔄 Marcada como pendiente');
+    }
   }
-
-  if (action === 'edit') {
-    openEditModal(id);
-  }
-
-  if (action === 'delete') {
-    pendingDeleteId = id;
-    showModal(confirmModal);
-  }
+  if (action === 'edit') openEditModal(id);
+  if (action === 'delete') { pendingDeleteId = id; showModal(confirmModal); }
 });
 
-/* -- Keyboard: checkbox toggle with Space/Enter -- */
+// Keyboard accessibility for checkboxes
 taskList.addEventListener('keydown', e => {
   if (e.key === ' ' || e.key === 'Enter') {
     const el = e.target.closest('[data-action="toggle"]');
-    if (el) {
-      e.preventDefault();
-      el.click();
-    }
+    if (el) { e.preventDefault(); el.click(); }
   }
 });
 
-/* -- Confirm Delete -- */
-btnConfirmDel.addEventListener('click', () => {
+// Confirm delete
+btnConfirmDel.addEventListener('click', async () => {
   if (pendingDeleteId) {
-    deleteTask(pendingDeleteId);
+    const id = pendingDeleteId;
     pendingDeleteId = null;
     hideModal(confirmModal);
+    await deleteTask(id);
     showToast('🗑️ Tarea eliminada', 'error');
-    renderTasks();
   }
 });
-
 btnCancelDelete.addEventListener('click', () => {
   pendingDeleteId = null;
   hideModal(confirmModal);
 });
 
-/* -- Close modals with Escape key -- */
+// Escape key
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
-    if (taskModal.style.display === 'flex')    closeTaskModal();
+    if (taskModal.style.display === 'flex') closeTaskModal();
     if (confirmModal.style.display === 'flex') { pendingDeleteId = null; hideModal(confirmModal); }
   }
 });
 
-/* =====================================================
+/* ============================================================
    INIT
-   ===================================================== */
-
-// Add sample tasks if first visit
-if (tasks.length === 0) {
-  tasks = [
-    {
-      id: generateId(),
-      title: 'Revisar correo electrónico',
-      description: 'Responder mensajes pendientes del equipo y clientes importantes.',
-      completed: false,
-      createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    },
-    {
-      id: generateId(),
-      title: 'Preparar presentación semanal',
-      description: 'Elaborar diapositivas para la reunión del lunes con el equipo de marketing.',
-      completed: false,
-      createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    },
-    {
-      id: generateId(),
-      title: 'Actualizar dependencias del proyecto',
-      description: 'Revisar y actualizar las librerías del proyecto a sus versiones más recientes.',
-      completed: true,
-      createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    },
-  ];
-  saveTasks();
-}
-
-renderTasks();
+   Supabase's onAuthStateChange fires automatically on load.
+   We just start the loading spinner — it's hidden by the listener.
+   ============================================================ */
+showLoading();
