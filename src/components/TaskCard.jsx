@@ -42,7 +42,7 @@ export default function TaskCard({ task, query, onToggle, onEdit, onDelete }) {
     return (
         <div className={`task-card${task.completed ? ' completed' : ''}`} role="article">
             <div
-                className="task-checkbox"
+                className={`task-checkbox${task.completed ? ' completed' : ''}`}
                 role="checkbox"
                 aria-checked={task.completed}
                 aria-label={checkLabel}

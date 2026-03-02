@@ -9,7 +9,7 @@ export default function Header({ user, onAddTask, onLogout }) {
                 {/* Logo */}
                 <div className="logo">
                     <span className="logo-icon">✦</span>
-                    <h1 className="logo-title">TaskFlow</h1>
+                    <h1 className="logo-title">TaskFlow | Agenda personal</h1>
                 </div>
 
                 {/* Right side: user info + actions */}

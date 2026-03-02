@@ -45,7 +45,7 @@ export default function AuthScreen({ onSignIn, onSignUp, onOAuth }) {
                 {/* Logo */}
                 <div className="auth-logo">
                     <span className="logo-icon">✦</span>
-                    <span className="logo-title-auth">TaskFlow</span>
+                    <span className="logo-title-auth">TaskFlow | Agenda personal</span>
                 </div>
                 <p className="auth-subtitle">Gestiona tus tareas en la nube</p>
 
