@@ -2,8 +2,14 @@ import React from 'react';
 
 export default function TaskCard({ task, query, onToggle, onEdit, onDelete }) {
     const formatDate = (iso) => {
+        if (!iso) return null;
         const d = new Date(iso);
         return d.toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' });
+    };
+
+    const isOverdue = (iso) => {
+        if (!iso || task.completed) return false;
+        return new Date(iso) < new Date().setHours(0, 0, 0, 0);
     };
 
     const escapeHtml = (str) => {
@@ -15,8 +21,8 @@ export default function TaskCard({ task, query, onToggle, onEdit, onDelete }) {
     };
 
     const highlightText = (text, q) => {
-        if (!q) return escapeHtml(text);
-        const escaped = escapeHtml(text);
+        if (!q) return escapeHtml(text || '');
+        const escaped = escapeHtml(text || '');
         const escapedQ = escapeHtml(q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const parts = escaped.split(new RegExp(`(${escapedQ})`, 'gi'));
         return (
@@ -37,6 +43,7 @@ export default function TaskCard({ task, query, onToggle, onEdit, onDelete }) {
     const badgeClass = task.completed ? 'badge-completed' : 'badge-pending';
     const badgeLabel = task.completed ? 'Completada' : 'Pendiente';
     const dateLabel = `Creada el ${formatDate(task.created_at)}`;
+    const dueDateLabel = task.due_date ? `Vence: ${formatDate(task.due_date)}` : null;
     const checkLabel = task.completed ? 'Marcar como pendiente' : 'Marcar como completada';
 
     return (
@@ -56,11 +63,21 @@ export default function TaskCard({ task, query, onToggle, onEdit, onDelete }) {
                 }}
             />
             <div className="task-content">
-                <div className="task-title">{highlightText(task.title, query)}</div>
+                <div className="task-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div className="task-title">{highlightText(task.title, query)}</div>
+                    {task.category && task.category !== 'General' && (
+                        <span className="category-tag">{task.category}</span>
+                    )}
+                </div>
                 <div className="task-desc">{highlightText(task.description, query)}</div>
                 <div className="task-meta">
                     <span className={`task-badge ${badgeClass}`}>{badgeLabel}</span>
                     <span className="task-date">{dateLabel}</span>
+                    {dueDateLabel && (
+                        <span className={`task-due ${isOverdue(task.due_date) ? 'overdue' : ''}`}>
+                            📅 {dueDateLabel}
+                        </span>
+                    )}
                 </div>
             </div>
             <div className="task-actions">

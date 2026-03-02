@@ -13,9 +13,13 @@ import NotConfigured from './components/NotConfigured';
 
 function App() {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState({ total_points: 0, level: 1 });
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Filters
   const [filter, setFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('Todas');
   const [query, setQuery] = useState('');
 
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -29,6 +33,39 @@ function App() {
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
   };
+
+  // Browser Notifications for Due Tasks
+  useEffect(() => {
+    if (tasks.length > 0 && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+
+      const checkDueTasks = () => {
+        const today = new Date().setHours(0, 0, 0, 0);
+        const dueToday = tasks.filter(t => !t.completed && t.due_date && new Date(t.due_date).setHours(0, 0, 0, 0) === today);
+        if (dueToday.length > 0 && Notification.permission === "granted") {
+          new Notification("📅 Tareas para hoy", {
+            body: `Tienes ${dueToday.length} tareas que vencen hoy en TaskFlow.`,
+            icon: "/vite.svg"
+          });
+        }
+      };
+
+      checkDueTasks();
+    }
+  }, [tasks.length]);
+
+  const loadProfile = useCallback(async (userId) => {
+    if (!supabase || !userId) return;
+    const { data } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (data) setUserProfile(data);
+  }, []);
 
   const loadTasks = useCallback(async (userId) => {
     if (!supabase || !userId) return;
@@ -59,15 +96,14 @@ function App() {
       return;
     }
 
-    // Auth listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
       if (currentUser) {
         loadTasks(currentUser.id);
+        loadProfile(currentUser.id);
 
-        // Setup Realtime with cleanup check
         if (channelRef.current) {
           supabase.removeChannel(channelRef.current);
         }
@@ -86,6 +122,7 @@ function App() {
           channelRef.current = null;
         }
         setTasks([]);
+        setUserProfile({ total_points: 0, level: 1 });
         setLoading(false);
       }
     });
@@ -96,7 +133,7 @@ function App() {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [loadTasks]);
+  }, [loadTasks, loadProfile]);
 
   const handleSignIn = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -112,22 +149,11 @@ function App() {
 
   const handleOAuth = async (provider) => {
     try {
-      const options = {
-        redirectTo: window.location.origin
-      };
-
-      // Si es Google, forzamos que pregunte qué cuenta usar
+      const options = { redirectTo: window.location.origin };
       if (provider === 'google') {
-        options.queryParams = {
-          prompt: 'select_account',
-          access_type: 'offline'
-        };
+        options.queryParams = { prompt: 'select_account', access_type: 'offline' };
       }
-
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options
-      });
+      const { error } = await supabase.auth.signInWithOAuth({ provider, options });
       if (error) return error.message;
     } catch (err) {
       return 'Error de conexión con el proveedor OAuth';
@@ -140,18 +166,18 @@ function App() {
     showToast('👋 Sesión cerrada correctamente');
   };
 
-  const handleSaveTask = async ({ id, title, description }) => {
+  const handleSaveTask = async ({ id, title, description, category, due_date }) => {
     if (id) {
       const { error } = await supabase
         .from('tasks')
-        .update({ title, description })
+        .update({ title, description, category, due_date })
         .eq('id', id);
       if (error) return showToast('⚠️ Error al actualizar', 'error');
       showToast('✅ Tarea actualizada');
     } else {
       const { error } = await supabase
         .from('tasks')
-        .insert({ user_id: user.id, title, description });
+        .insert({ user_id: user.id, title, description, category, due_date });
       if (error) return showToast('⚠️ Error al crear', 'error');
       showToast('🎉 Tarea agregada');
     }
@@ -163,12 +189,31 @@ function App() {
   const handleToggleTask = async (id) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
+    const isNowCompleted = !task.completed;
+
     const { error } = await supabase
       .from('tasks')
-      .update({ completed: !task.completed })
+      .update({ completed: isNowCompleted })
       .eq('id', id);
+
     if (error) return showToast('⚠️ Error al actualizar', 'error');
-    showToast(!task.completed ? '✅ Completada' : '🔄 Pendiente');
+
+    if (isNowCompleted) {
+      const pointsToAdd = task.points || 10;
+      const newTotal = (userProfile.total_points || 0) + pointsToAdd;
+      const newLevel = Math.floor(newTotal / 100) + 1;
+
+      await supabase
+        .from('user_profiles')
+        .update({ total_points: newTotal, level: newLevel })
+        .eq('id', user.id);
+
+      loadProfile(user.id);
+      showToast(`🏆 ¡Completada! +${pointsToAdd} pts`);
+    } else {
+      showToast('🔄 Marcada como pendiente');
+    }
+
     loadTasks(user.id);
   };
 
@@ -190,12 +235,14 @@ function App() {
       (filter === 'pending' && !task.completed) ||
       (filter === 'completed' && task.completed);
 
+    const matchCategory = categoryFilter === 'Todas' || task.category === categoryFilter;
+
     const q = query.toLowerCase();
     const matchText = !q ||
       task.title.toLowerCase().includes(q) ||
       task.description.toLowerCase().includes(q);
 
-    return matchStatus && matchText;
+    return matchStatus && matchCategory && matchText;
   });
 
   if (!isConfigured) return <NotConfigured />;
@@ -227,13 +274,15 @@ function App() {
         onLogout={handleLogout}
       />
       <main className="main">
-        <StatsBar tasks={tasks} />
+        <StatsBar tasks={tasks} profile={userProfile} />
         <SearchFilter
           query={query}
           onSearchChange={setQuery}
           filter={filter}
           onFilterChange={setFilter}
           onClearSearch={() => setQuery('')}
+          categoryFilter={categoryFilter}
+          onCategoryChange={setCategoryFilter}
         />
         <TaskList
           tasks={filteredTasks}

@@ -1,18 +1,32 @@
 import React, { useState, useEffect } from 'react';
 
+const CATEGORIES = ['General', 'Trabajo', 'Personal', 'Estudio', 'Importante', 'Otros'];
+
 export default function TaskModal({ task, isOpen, onClose, onSave }) {
     const [title, setTitle] = useState('');
     const [desc, setDesc] = useState('');
+    const [category, setCategory] = useState('General');
+    const [dueDate, setDueDate] = useState('');
+
     const [errorTitle, setErrorTitle] = useState('');
     const [errorDesc, setErrorDesc] = useState('');
 
     useEffect(() => {
         if (task) {
-            setTitle(task.title);
-            setDesc(task.description);
+            setTitle(task.title || '');
+            setDesc(task.description || '');
+            setCategory(task.category || 'General');
+            // Format date for input type="date" (YYYY-MM-DD)
+            if (task.due_date) {
+                setDueDate(new Date(task.due_date).toISOString().split('T')[0]);
+            } else {
+                setDueDate('');
+            }
         } else {
             setTitle('');
             setDesc('');
+            setCategory('General');
+            setDueDate('');
         }
         setErrorTitle('');
         setErrorDesc('');
@@ -43,7 +57,9 @@ export default function TaskModal({ task, isOpen, onClose, onSave }) {
         onSave({
             id: task?.id,
             title: title.trim(),
-            description: desc.trim()
+            description: desc.trim(),
+            category,
+            due_date: dueDate || null
         });
     };
 
@@ -69,13 +85,41 @@ export default function TaskModal({ task, isOpen, onClose, onSave }) {
                         />
                         {errorTitle && <span className="field-error" role="alert">{errorTitle}</span>}
                     </div>
+
+                    <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="task-category">Categoría</label>
+                            <select
+                                id="task-category"
+                                className="form-input"
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                            >
+                                {CATEGORIES.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label" htmlFor="task-due-date">Vencimiento</label>
+                            <input
+                                type="date"
+                                id="task-due-date"
+                                className="form-input"
+                                value={dueDate}
+                                onChange={(e) => setDueDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+
                     <div className="form-group">
                         <label className="form-label" htmlFor="task-desc">Descripción <span className="required">*</span></label>
                         <textarea
                             id="task-desc"
                             className={`form-input${errorDesc ? ' error' : ''}`}
                             placeholder="Describe los detalles de la tarea..."
-                            rows="4"
+                            rows="3"
                             maxLength="300"
                             value={desc}
                             onChange={(e) => setDesc(e.target.value)}
@@ -84,6 +128,7 @@ export default function TaskModal({ task, isOpen, onClose, onSave }) {
                         {errorDesc && <span className="field-error" role="alert">{errorDesc}</span>}
                         <span className="char-count">{desc.length} / 300</span>
                     </div>
+
                     <div className="modal-actions">
                         <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
                         <button type="submit" className="btn btn-primary">

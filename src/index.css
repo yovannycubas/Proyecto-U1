@@ -1,5 +1,5 @@
 /* ===================================================
-   TASKFLOW – index.css (PASTEL EDITION)
+   TASKFLOW – index.css (PASTEL EDITION + ADVANCED)
    Design: Bright Pastel + Soft UI + Centered Layout
    =================================================== */
 
@@ -19,7 +19,6 @@
   --bg-card: #FFFFFF;
 
   --accent: #BDB2FF;
-  /* Purple as main accent */
   --accent-dark: #9D8DF1;
 
   --text-primary: #2D3436;
@@ -135,13 +134,11 @@ body {
 /* ---------- MAIN LAYOUT ---------- */
 .main {
   max-width: 800px;
-  /* Centered narrow container */
   margin: 0 auto;
   padding: 40px 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Center children */
 }
 
 .stats-bar,
@@ -188,6 +185,13 @@ body {
   border-bottom: 4px solid var(--p-green);
 }
 
+.accent-points {
+  border-radius: var(--radius-md);
+  margin-top: 12px;
+  padding: 18px 24px !important;
+  box-shadow: var(--shadow-md);
+}
+
 /* ---------- CONTROLS ---------- */
 .controls {
   display: flex;
@@ -230,6 +234,7 @@ body {
   display: flex;
   gap: 8px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .filter-btn {
@@ -261,14 +266,14 @@ body {
   width: 100%;
   max-width: 600px;
   background: white;
-  padding: 24px;
+  padding: 20px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   display: grid;
   grid-template-columns: auto 1fr auto;
   gap: 20px;
-  align-items: center;
+  align-items: flex-start;
   transition: transform 0.2s;
 }
 
@@ -280,12 +285,14 @@ body {
 .task-checkbox {
   width: 28px;
   height: 28px;
+  margin-top: 4px;
   border-radius: 50%;
   border: 2px solid var(--p-blue);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .task-checkbox.completed {
@@ -300,14 +307,16 @@ body {
 }
 
 .task-title {
-  font-size: 1.1rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
   margin-bottom: 4px;
+  color: var(--text-primary);
 }
 
 .task-desc {
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: var(--text-secondary);
+  line-height: 1.4;
 }
 
 .task-card.completed .task-title {
@@ -315,22 +324,45 @@ body {
   color: var(--text-muted);
 }
 
-.task-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.7rem;
+.category-tag {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.65rem;
   font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 8px;
   text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.badge-pending {
-  background: var(--p-yellow);
-  color: #856404;
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
 }
 
-.badge-completed {
-  background: var(--p-green);
-  color: #155724;
+.task-date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.task-due {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.task-due.overdue {
+  color: #D63031;
+  background: #FFF5F5;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 /* ---------- AUTH SCREEN ---------- */
@@ -395,22 +427,6 @@ body {
 
 .form-input:focus {
   border-color: var(--p-blue);
-}
-
-.oauth-btns {
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.btn-oauth-google {
-  background: #FFFFFF;
-  border: 1px solid var(--border);
-}
-
-.btn-oauth-github {
-  background: #24292E;
-  color: white;
 }
 
 /* ---------- MODAL ---------- */

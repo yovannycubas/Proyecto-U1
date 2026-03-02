@@ -1,8 +1,18 @@
 import React from 'react';
 
-export default function SearchFilter({ query, onSearchChange, filter, onFilterChange, onClearSearch }) {
+const CATEGORIES = ['Todas', 'Trabajo', 'Personal', 'Estudio', 'Importante', 'Otros'];
+
+export default function SearchFilter({
+    query,
+    onSearchChange,
+    filter,
+    onFilterChange,
+    onClearSearch,
+    categoryFilter,
+    onCategoryChange
+}) {
     const filterOptions = [
-        { id: 'all', label: 'Todas' },
+        { id: 'all', label: 'Todas las tareas' },
         { id: 'pending', label: 'Pendientes' },
         { id: 'completed', label: 'Completadas' }
     ];
@@ -24,12 +34,17 @@ export default function SearchFilter({ query, onSearchChange, filter, onFilterCh
                         className="btn-clear"
                         onClick={onClearSearch}
                         aria-label="Limpiar búsqueda"
+                        style={{ position: 'absolute', right: '12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
                     >
                         ✕
                     </button>
                 )}
             </div>
-            <div className="filter-group" role="group" aria-label="Filtrar por estado">
+
+            <div className="filter-group" style={{ marginTop: '12px' }}>
+                <div style={{ width: '100%', marginBottom: '8px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Estado
+                </div>
                 {filterOptions.map((opt) => (
                     <button
                         key={opt.id}
@@ -37,6 +52,22 @@ export default function SearchFilter({ query, onSearchChange, filter, onFilterCh
                         onClick={() => onFilterChange(opt.id)}
                     >
                         {opt.label}
+                    </button>
+                ))}
+            </div>
+
+            <div className="filter-group" style={{ marginTop: '12px' }}>
+                <div style={{ width: '100%', marginBottom: '8px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+                    Categoría
+                </div>
+                {CATEGORIES.map((cat) => (
+                    <button
+                        key={cat}
+                        className={`filter-btn${categoryFilter === cat ? ' active' : ''}`}
+                        onClick={() => onCategoryChange(cat)}
+                        style={{ background: categoryFilter === cat ? 'var(--p-blue)' : 'white' }}
+                    >
+                        {cat}
                     </button>
                 ))}
             </div>
