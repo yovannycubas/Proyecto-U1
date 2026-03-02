@@ -58,13 +58,24 @@ function App() {
 
   const loadProfile = useCallback(async (userId) => {
     if (!supabase || !userId) return;
-    const { data } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle(); // maybeSingle handles 0 rows gracefully
 
-    if (data) setUserProfile(data);
+      if (error) {
+        console.error('Error loading profile:', error);
+      } else if (data) {
+        setUserProfile(data);
+      } else {
+        // If no profile exists, initialize with default
+        setUserProfile({ total_points: 0, level: 1 });
+      }
+    } catch (err) {
+      console.error('Unexpected error loading profile:', err);
+    }
   }, []);
 
   const loadTasks = useCallback(async (userId) => {
@@ -79,12 +90,12 @@ function App() {
 
       if (error) {
         showToast('⚠️ Error al cargar tareas', 'error');
-        console.error(error);
+        console.error('Supabase error loading tasks:', error);
       } else {
         setTasks(data || []);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Unexpected error loading tasks:', err);
     } finally {
       setLoading(false);
     }
@@ -167,23 +178,34 @@ function App() {
   };
 
   const handleSaveTask = async ({ id, title, description, category, due_date }) => {
-    if (id) {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ title, description, category, due_date })
-        .eq('id', id);
-      if (error) return showToast('⚠️ Error al actualizar', 'error');
-      showToast('✅ Tarea actualizada');
-    } else {
-      const { error } = await supabase
-        .from('tasks')
-        .insert({ user_id: user.id, title, description, category, due_date });
-      if (error) return showToast('⚠️ Error al crear', 'error');
-      showToast('🎉 Tarea agregada');
+    try {
+      if (id) {
+        const { error } = await supabase
+          .from('tasks')
+          .update({ title, description, category, due_date })
+          .eq('id', id);
+        if (error) {
+          console.error('Error updating task:', error);
+          return showToast('⚠️ Error al actualizar. Revisa que ejecutaste el SQL.', 'error');
+        }
+        showToast('✅ Tarea actualizada');
+      } else {
+        const { error } = await supabase
+          .from('tasks')
+          .insert({ user_id: user.id, title, description, category, due_date });
+        if (error) {
+          console.error('Error inserting task:', error);
+          return showToast('⚠️ Error al crear. ¿Faltan columnas en la DB?', 'error');
+        }
+        showToast('🎉 Tarea agregada');
+      }
+      setIsTaskModalOpen(false);
+      setEditingTask(null);
+      loadTasks(user.id);
+    } catch (err) {
+      console.error('Unexpected error saving task:', err);
+      showToast('❌ Error inesperado al guardar', 'error');
     }
-    setIsTaskModalOpen(false);
-    setEditingTask(null);
-    loadTasks(user.id);
   };
 
   const handleToggleTask = async (id) => {
@@ -191,43 +213,64 @@ function App() {
     if (!task) return;
     const isNowCompleted = !task.completed;
 
-    const { error } = await supabase
-      .from('tasks')
-      .update({ completed: isNowCompleted })
-      .eq('id', id);
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ completed: isNowCompleted })
+        .eq('id', id);
 
-    if (error) return showToast('⚠️ Error al actualizar', 'error');
+      if (error) {
+        console.error('Error toggling task:', error);
+        return showToast('⚠️ Error al actualizar estado', 'error');
+      }
 
-    if (isNowCompleted) {
-      const pointsToAdd = task.points || 10;
-      const newTotal = (userProfile.total_points || 0) + pointsToAdd;
-      const newLevel = Math.floor(newTotal / 100) + 1;
+      if (isNowCompleted) {
+        const pointsToAdd = task.points || 10;
+        const newTotal = (userProfile.total_points || 0) + pointsToAdd;
+        const newLevel = Math.floor(newTotal / 100) + 1;
 
-      await supabase
-        .from('user_profiles')
-        .update({ total_points: newTotal, level: newLevel })
-        .eq('id', user.id);
+        // Use upsert to ensure profile exists and is updated
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .upsert({
+            id: user.id,
+            total_points: newTotal,
+            level: newLevel,
+            username: user.email
+          });
 
-      loadProfile(user.id);
-      showToast(`🏆 ¡Completada! +${pointsToAdd} pts`);
-    } else {
-      showToast('🔄 Marcada como pendiente');
+        if (profileError) {
+          console.error('Error awarding points:', profileError);
+          showToast('⚠️ Tarea completada, pero no se pudieron sumar puntos', 'error');
+        } else {
+          loadProfile(user.id);
+          showToast(`🏆 ¡Completada! +${pointsToAdd} pts`);
+        }
+      } else {
+        showToast('🔄 Marcada como pendiente');
+      }
+
+      loadTasks(user.id);
+    } catch (err) {
+      console.error('Unexpected error toggling task:', err);
     }
-
-    loadTasks(user.id);
   };
 
   const handleDeleteTask = async () => {
     if (!pendingDeleteId) return;
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', pendingDeleteId);
-    if (error) return showToast('⚠️ Error al eliminar', 'error');
-    showToast('🗑️ Tarea eliminada', 'error');
-    setIsConfirmModalOpen(false);
-    setPendingDeleteId(null);
-    loadTasks(user.id);
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', pendingDeleteId);
+      if (error) return showToast('⚠️ Error al eliminar', 'error');
+      showToast('🗑️ Tarea eliminada', 'error');
+      setIsConfirmModalOpen(false);
+      setPendingDeleteId(null);
+      loadTasks(user.id);
+    } catch (err) {
+      console.error('Unexpected error deleting task:', err);
+    }
   };
 
   const filteredTasks = tasks.filter(task => {
@@ -239,8 +282,8 @@ function App() {
 
     const q = query.toLowerCase();
     const matchText = !q ||
-      task.title.toLowerCase().includes(q) ||
-      task.description.toLowerCase().includes(q);
+      (task.title || '').toLowerCase().includes(q) ||
+      (task.description || '').toLowerCase().includes(q);
 
     return matchStatus && matchCategory && matchText;
   });
