@@ -112,9 +112,21 @@ function App() {
 
   const handleOAuth = async (provider) => {
     try {
+      const options = {
+        redirectTo: window.location.origin
+      };
+
+      // Si es Google, forzamos que pregunte qué cuenta usar
+      if (provider === 'google') {
+        options.queryParams = {
+          prompt: 'select_account',
+          access_type: 'offline'
+        };
+      }
+
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: window.location.origin }
+        options
       });
       if (error) return error.message;
     } catch (err) {
