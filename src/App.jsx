@@ -36,23 +36,31 @@ function App() {
 
   // Browser Notifications for Due Tasks
   useEffect(() => {
-    if (tasks.length > 0 && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-
-      const checkDueTasks = () => {
-        const today = new Date().setHours(0, 0, 0, 0);
-        const dueToday = tasks.filter(t => !t.completed && t.due_date && new Date(t.due_date).setHours(0, 0, 0, 0) === today);
-        if (dueToday.length > 0 && Notification.permission === "granted") {
-          new Notification("📅 Tareas para hoy", {
-            body: `Tienes ${dueToday.length} tareas que vencen hoy en TaskFlow.`,
-            icon: "/vite.svg"
-          });
+    try {
+      if (typeof window !== "undefined" && tasks.length > 0 && "Notification" in window) {
+        if (Notification.permission === "default") {
+          Notification.requestPermission().catch(console.error);
         }
-      };
 
-      checkDueTasks();
+        const checkDueTasks = () => {
+          try {
+            const today = new Date().setHours(0, 0, 0, 0);
+            const dueToday = tasks.filter(t => !t.completed && t.due_date && new Date(t.due_date).setHours(0, 0, 0, 0) === today);
+            if (dueToday.length > 0 && Notification.permission === "granted") {
+              new Notification("📅 Tareas para hoy", {
+                body: `Tienes ${dueToday.length} tareas que vencen hoy en TaskFlow.`,
+                icon: "/vite.svg"
+              });
+            }
+          } catch (innerErr) {
+            console.warn('Notification display failed:', innerErr);
+          }
+        };
+
+        checkDueTasks();
+      }
+    } catch (err) {
+      console.warn('Notifications not supported or blocked:', err);
     }
   }, [tasks.length]);
 
